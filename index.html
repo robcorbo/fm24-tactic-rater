@@ -1,0 +1,713 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FM24 Tactic Rater</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-out;
+        }
+        .pitch-container {
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+            position: relative;
+        }
+        .pitch {
+            background: linear-gradient(to bottom, #2e7d32, #4caf50);
+            border: 2px solid #fff;
+            border-radius: 8px;
+            width: 100%;
+            aspect-ratio: 2 / 3;
+            position: relative;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .pitch svg {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        .player {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            background: #fff;
+            border: 2px solid #1565c0;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: bold;
+            color: #1565c0;
+            cursor: pointer;
+            transition: transform 0.2s;
+            z-index: 2;
+        }
+        .player:hover {
+            transform: scale(1.2);
+        }
+        select, button, input {
+            transition: all 0.3s ease;
+        }
+        select:focus, button:focus, input:focus {
+            outline: none;
+            ring: 2px solid #1565c0;
+        }
+        .accordion-header {
+            cursor: pointer;
+        }
+        .accordion-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+        .accordion-content.open {
+            max-height: 1000px;
+        }
+        .connection-line {
+            stroke-width: 4;
+            z-index: 1;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div class="container mx-auto px-4 py-8 max-w-4xl">
+        <h1 class="text-4xl font-bold text-center text-gray-800 mb-6">FM24 Tactic Rater</h1>
+        <div class="bg-white rounded-lg shadow-lg p-6">
+            <div class="formation-select mb-6">
+                <label for="formation" class="block text-lg font-medium text-gray-700 mb-2">Select Formation:</label>
+                <select id="formation" onchange="updateRoles()" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-gray-50">
+                    <option value="3-4-3">3-4-3</option>
+                    <option value="3-5-2">3-5-2</option>
+                    <option value="3-4-1-2">3-4-1-2</option>
+                    <option value="3-4-2-1">3-4-2-1</option>
+                    <option value="4-4-2">4-4-2</option>
+                    <option value="4-2-3-1">4-2-3-1</option>
+                    <option value="4-3-3">4-3-3</option>
+                    <option value="4-1-4-1">4-1-4-1</option>
+                    <option value="4-2-2-2">4-2-2-2</option>
+                    <option value="4-1-2-1-2">4-1-2-1-2</option>
+                    <option value="4-3-2-1">4-3-2-1</option>
+                    <option value="4-4-1-1">4-4-1-1</option>
+                    <option value="4-2-4">4-2-4</option>
+                    <option value="4-3-1-2">4-3-1-2</option>
+                    <option value="5-3-2">5-3-2</option>
+                    <option value="5-4-1">5-4-1</option>
+                    <option value="5-2-3">5-2-3</option>
+                    <option value="5-2-1-2">5-2-1-2</option>
+                    <option value="5-2-2-1">5-2-2-1</option>
+                </select>
+            </div>
+            <div class="pitch-container mb-6">
+                <div class="pitch" id="pitch">
+                    <svg viewBox="0 0 200 300">
+                        <rect x="10" y="10" width="180" height="280" fill="none" stroke="#fff" stroke-width="2"/>
+                        <rect x="10" y="10" width="180" height="50" fill="none" stroke="#fff" stroke-width="2"/>
+                        <rect x="10" y="240" width="180" height="50" fill="none" stroke="#fff" stroke-width="2"/>
+                        <rect x="60" y="10" width="80" height="30" fill="none" stroke="#fff" stroke-width="2"/>
+                        <rect x="60" y="260" width="80" height="30" fill="none" stroke="#fff" stroke-width="2"/>
+                        <rect x="85" y="10" width="30" height="10" fill="none" stroke="#fff" stroke-width="2"/>
+                        <rect x="85" y="280" width="30" height="10" fill="none" stroke="#fff" stroke-width="2"/>
+                        <line x1="10" x2="190" y1="150" y2="150" stroke="#fff" stroke-width="2"/>
+                        <circle cx="100" cy="150" r="20" fill="none" stroke="#fff" stroke-width="2"/>
+                        <circle cx="100" cy="30" r="2" fill="#fff"/>
+                        <circle cx="100" cy="270" r="2" fill="#fff"/>
+                    </svg>
+                </div>
+            </div>
+            <div id="roles" class="role-select grid grid-cols-1 md:grid-cols-2 gap-4 mb-6"></div>
+            <div class="team-instructions mb-6">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4 accordion-header" onclick="toggleAccordion('team-instructions')">Team Instructions</h2>
+                <div id="team-instructions" class="accordion-content">
+                    <div class="mentality mb-4">
+                        <label class="block text-sm font-medium text-gray-700">Mentality</label>
+                        <select id="mentality" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-gray-50">
+                            <option value="Very Defensive">Very Defensive</option>
+                            <option value="Defensive">Defensive</option>
+                            <option value="Cautious">Cautious</option>
+                            <option value="Balanced" selected>Balanced</option>
+                            <option value="Positive">Positive</option>
+                            <option value="Attacking">Attacking</option>
+                            <option value="Very Attacking">Very Attacking</option>
+                        </select>
+                    </div>
+                    <div class="in-possession mb-4">
+                        <h3 class="text-lg font-medium text-gray-700">In Possession</h3>
+                        <div class="grid grid-cols-2 gap-2">
+                            <label><input type="checkbox" id="Shorter Passing"> Shorter Passing</label>
+                            <label><input type="checkbox" id="More Direct Passing"> More Direct Passing</label>
+                            <label><input type="checkbox" id="Lower Tempo"> Lower Tempo</label>
+                            <label><input type="checkbox" id="Higher Tempo"> Higher Tempo</label>
+                            <label><input type="checkbox" id="Narrow"> Narrow</label>
+                            <label><input type="checkbox" id="Wide"> Wide</label>
+                            <label><input type="checkbox" id="Pass Into Space"> Pass Into Space</label>
+                            <label><input type="checkbox" id="Play Out of Defence"> Play Out of Defence</label>
+                            <label><input type="checkbox" id="Focus Play Through Middle"> Focus Play Through Middle</label>
+                            <label><input type="checkbox" id="Focus Play Down Left"> Focus Play Down Left</label>
+                            <label><input type="checkbox" id="Focus Play Down Right"> Focus Play Down Right</label>
+                            <label><input type="checkbox" id="Overlap Left"> Overlap Left</label>
+                            <label><input type="checkbox" id="Overlap Right"> Overlap Right</label>
+                            <label><input type="checkbox" id="Underlap Left"> Underlap Left</label>
+                            <label><input type="checkbox" id="Underlap Right"> Underlap Right</label>
+                            <label><input type="checkbox" id="Be More Expressive"> Be More Expressive</label>
+                            <label><input type="checkbox" id="Be More Disciplined"> Be More Disciplined</label>
+                            <label><input type="checkbox" id="Hit Early Crosses"> Hit Early Crosses</label>
+                            <label><input type="checkbox" id="Low Crosses"> Low Crosses</label>
+                            <label><input type="checkbox" id="Whipped Crosses"> Whipped Crosses</label>
+                            <label><input type="checkbox" id="Float Crosses"> Float Crosses</label>
+                            <label><input type="checkbox" id="Work Ball Into Box"> Work Ball Into Box</label>
+                            <label><input type="checkbox" id="Run at Defence"> Run at Defence</label>
+                        </div>
+                    </div>
+                    <div class="in-transition mb-4">
+                        <h3 class="text-lg font-medium text-gray-700">In Transition</h3>
+                        <div class="grid grid-cols-2 gap-2">
+                            <label><input type="checkbox" id="Counter-Press"> Counter-Press</label>
+                            <label><input type="checkbox" id="Regroup"> Regroup</label>
+                            <label><input type="checkbox" id="Counter"> Counter</label>
+                            <label><input type="checkbox" id="Hold Shape"> Hold Shape</label>
+                            <label><input type="checkbox" id="Distribute to Centre-Backs"> Distribute to Centre-Backs</label>
+                            <label><input type="checkbox" id="Distribute to Full-Backs"> Distribute to Full-Backs</label>
+                            <label><input type="checkbox" id="Distribute to Playmaker"> Distribute to Playmaker</label>
+                            <label><input type="checkbox" id="Distribute to Flanks"> Distribute to Flanks</label>
+                            <label><input type="checkbox" id="Roll It Out"> Roll It Out</label>
+                            <label><input type="checkbox" id="Throw It Long"> Throw It Long</label>
+                            <label><input type="checkbox" id="Distribute Quickly"> Distribute Quickly</label>
+                            <label><input type="checkbox" id="Slow Pace Down"> Slow Pace Down</label>
+                            <label><input type="checkbox" id="Waste Time"> Waste Time</label>
+                            <label><input type="checkbox" id="Don’t Waste Time"> Don’t Waste Time</label>
+                        </div>
+                    </div>
+                    <div class="out-of-possession">
+                        <h3 class="text-lg font-medium text-gray-700">Out of Possession</h3>
+                        <div class="grid grid-cols-2 gap-2">
+                            <label><input type="checkbox" id="Much More Often"> Much More Often</label>
+                            <label><input type="checkbox" id="More Often"> More Often</label>
+                            <label><input type="checkbox" id="Less Often"> Less Often</label>
+                            <label><input type="checkbox" id="Much Less Often"> Much Less Often</label>
+                            <label><input type="checkbox" id="High Press"> High Press</label>
+                            <label><input type="checkbox" id="Fairly High Press"> Fairly High Press</label>
+                            <label><input type="checkbox" id="Fairly Low Press"> Fairly Low Press</label>
+                            <label><input type="checkbox" id="Low Press"> Low Press</label>
+                            <label><input type="checkbox" id="Much Higher Line"> Much Higher Line</label>
+                            <label><input type="checkbox" id="Higher Line"> Higher Line</label>
+                            <label><input type="checkbox" id="Lower Line"> Lower Line</label>
+                            <label><input type="checkbox" id="Much Lower Line"> Much Lower Line</label>
+                            <label><input type="checkbox" id="Invite Crosses"> Invite Crosses</label>
+                            <label><input type="checkbox" id="Trap Outside"> Trap Outside</label>
+                            <label><input type="checkbox" id="Trap Inside"> Trap Inside</label>
+                            <label><input type="checkbox" id="Use Offside Trap"> Use Offside Trap</label>
+                            <label><input type="checkbox" id="Get Stuck In"> Get Stuck In</label>
+                            <label><input type="checkbox" id="Stay On Feet"> Stay On Feet</label>
+                            <label><input type="checkbox" id="Prevent Short GK Distribution"> Prevent Short GK Distribution</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <button onclick="rateTactic()" class="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors">Rate Tactic</button>
+            <div id="result" class="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200 fade-in"></div>
+        </div>
+    </div>
+
+    <script>
+        const formations = {
+            "3-4-3": ["GK", "DCL", "DC", "DCR", "WBL", "MCL", "MCR", "WBR", "AML", "ST", "AMR"],
+            "3-5-2": ["GK", "DCL", "DC", "DCR", "WBL", "MCL", "MC", "MCR", "WBR", "STL", "STR"],
+            "3-4-1-2": ["GK", "DCL", "DC", "DCR", "WBL", "MCL", "MCR", "WBR", "AMC", "STL", "STR"],
+            "3-4-2-1": ["GK", "DCL", "DC", "DCR", "WBL", "MCL", "MCR", "WBR", "AML", "AMR", "ST"],
+            "4-4-2": ["GK", "DL", "DCL", "DCR", "DR", "ML", "MCL", "MCR", "MR", "STL", "STR"],
+            "4-2-3-1": ["GK", "DL", "DCL", "DCR", "DR", "DMCL", "DMCR", "AML", "AMC", "AMR", "ST"],
+            "4-3-3": ["GK", "DL", "DCL", "DCR", "DR", "MCL", "MC", "MCR", "AML", "ST", "AMR"],
+            "4-1-4-1": ["GK", "DL", "DCL", "DCR", "DR", "DMC", "ML", "MCL", "MCR", "MR", "ST"],
+            "4-2-2-2": ["GK", "DL", "DCL", "DCR", "DR", "DMCL", "DMCR", "AML", "AMR", "STL", "STR"],
+            "4-1-2-1-2": ["GK", "DL", "DCL", "DCR", "DR", "DMC", "MCL", "MCR", "AMC", "STL", "STR"],
+            "4-3-2-1": ["GK", "DL", "DCL", "DCR", "DR", "MCL", "MC", "MCR", "AML", "AMR", "ST"],
+            "4-4-1-1": ["GK", "DL", "DCL", "DCR", "DR", "ML", "MCL", "MCR", "MR", "AMC", "ST"],
+            "4-2-4": ["GK", "DL", "DCL", "DCR", "DR", "DMCL", "DMCR", "AML", "AMR", "STL", "STR"],
+            "4-3-1-2": ["GK", "DL", "DCL", "DCR", "DR", "MCL", "MC", "MCR", "AMC", "STL", "STR"],
+            "5-3-2": ["GK", "DCL", "DC", "DCR", "WBL", "WBR", "MCL", "MC", "MCR", "STL", "STR"],
+            "5-4-1": ["GK", "DCL", "DC", "DCR", "WBL", "WBR", "ML", "MCL", "MCR", "MR", "ST"],
+            "5-2-3": ["GK", "DCL", "DC", "DCR", "WBL", "WBR", "DMCL", "DMCR", "AML", "ST", "AMR"],
+            "5-2-1-2": ["GK", "DCL", "DC", "DCR", "WBL", "WBR", "DMCL", "DMCR", "AMC", "STL", "STR"],
+            "5-2-2-1": ["GK", "DCL", "DC", "DCR", "WBL", "WBR", "DMCL", "DMCR", "AML", "AMR", "ST"]
+        };
+
+        const roles = {
+            "GK": ["Goalkeeper", "Sweeper Keeper"],
+            "DL": ["Full Back", "Wing Back", "Inverted Wing Back", "Complete Wing Back", "No-Nonsense Full Back", "Inverted Full Back"],
+            "DCL": ["Centre Back", "Ball Playing Defender", "No-Nonsense Centre Back", "Wide Centre Back", "Libero"],
+            "DC": ["Centre Back", "Ball Playing Defender", "No-Nonsense Centre Back", "Wide Centre Back", "Libero"],
+            "DCR": ["Centre Back", "Ball Playing Defender", "No-Nonsense Centre Back", "Wide Centre Back", "Libero"],
+            "DR": ["Full Back", "Wing Back", "Inverted Wing Back", "Complete Wing Back", "No-Nonsense Full Back", "Inverted Full Back"],
+            "WBL": ["Wing Back", "Complete Wing Back", "Inverted Wing Back"],
+            "WBR": ["Wing Back", "Complete Wing Back", "Inverted Wing Back"],
+            "DMC": ["Defensive Midfielder", "Deep Lying Playmaker", "Half Back", "Anchor", "Segundo Volante", "Roaming Playmaker", "Regista"],
+            "DMCL": ["Defensive Midfielder", "Deep Lying Playmaker", "Half Back", "Anchor", "Segundo Volante", "Roaming Playmaker", "Regista"],
+            "DMCR": ["Defensive Midfielder", "Deep Lying Playmaker", "Half Back", "Anchor", "Segundo Volante", "Roaming Playmaker", "Regista"],
+            "ML": ["Winger", "Wide Midfielder", "Defensive Winger", "Wide Playmaker"],
+            "MCL": ["Central Midfielder", "Deep Lying Playmaker", "Box to Box Midfielder", "Advanced Playmaker", "Mezzala", "Carrilero"],
+            "MC": ["Central Midfielder", "Deep Lying Playmaker", "Box to Box Midfielder", "Advanced Playmaker", "Mezzala", "Carrilero"],
+            "MCR": ["Central Midfielder", "Deep Lying Playmaker", "Box to Box Midfielder", "Advanced Playmaker", "Mezzala", "Carrilero"],
+            "MR": ["Winger", "Wide Midfielder", "Defensive Winger", "Wide Playmaker"],
+            "AML": ["Winger", "Inside Forward", "Inverted Winger", "Advanced Playmaker", "Trequartista", "Raumdeuter"],
+            "AMC": ["Attacking Midfielder", "Advanced Playmaker", "Trequartista", "Enganche", "Shadow Striker"],
+            "AMR": ["Winger", "Inside Forward", "Inverted Winger", "Advanced Playmaker", "Trequartista", "Raumdeuter"],
+            "STL": ["Advanced Forward", "Complete Forward", "Deep Lying Forward", "False Nine", "Poacher", "Pressing Forward", "Target Forward"],
+            "STR": ["Advanced Forward", "Complete Forward", "Deep Lying Forward", "False Nine", "Poacher", "Pressing Forward", "Target Forward"],
+            "ST": ["Advanced Forward", "Complete Forward", "Deep Lying Forward", "False Nine", "Poacher", "Pressing Forward", "Target Forward"]
+        };
+
+        const duties = {
+            "Goalkeeper": ["Defend"],
+            "Sweeper Keeper": ["Defend", "Support", "Attack"],
+            "Full Back": ["Defend", "Support", "Attack"],
+            "Wing Back": ["Defend", "Support", "Attack"],
+            "Inverted Wing Back": ["Defend", "Support", "Attack"],
+            "Complete Wing Back": ["Support", "Attack"],
+            "No-Nonsense Full Back": ["Defend"],
+            "Inverted Full Back": ["Defend"],
+            "Centre Back": ["Defend", "Stopper", "Cover"],
+            "Ball Playing Defender": ["Defend", "Stopper", "Cover"],
+            "No-Nonsense Centre Back": ["Defend", "Stopper", "Cover"],
+            "Wide Centre Back": ["Defend", "Support", "Attack"],
+            "Libero": ["Support", "Attack"],
+            "Defensive Midfielder": ["Defend", "Support"],
+            "Deep Lying Playmaker": ["Defend", "Support"],
+            "Half Back": ["Defend"],
+            "Anchor": ["Defend"],
+            "Segundo Volante": ["Support", "Attack"],
+            "Roaming Playmaker": ["Support"],
+            "Regista": ["Support"],
+            "Winger": ["Support", "Attack"],
+            "Wide Midfielder": ["Defend", "Support", "Attack"],
+            "Defensive Winger": ["Defend", "Support"],
+            "Wide Playmaker": ["Support", "Attack"],
+            "Central Midfielder": ["Defend", "Support", "Attack"],
+            "Box to Box Midfielder": ["Support"],
+            "Advanced Playmaker": ["Support", "Attack"],
+            "Mezzala": ["Support", "Attack"],
+            "Carrilero": ["Support"],
+            "Inside Forward": ["Support", "Attack"],
+            "Inverted Winger": ["Support", "Attack"],
+            "Trequartista": ["Attack"],
+            "Raumdeuter": ["Attack"],
+            "Attacking Midfielder": ["Support", "Attack"],
+            "Enganche": ["Support"],
+            "Shadow Striker": ["Attack"],
+            "Advanced Forward": ["Attack"],
+            "Complete Forward": ["Support", "Attack"],
+            "Deep Lying Forward": ["Support", "Attack"],
+            "False Nine": ["Support"],
+            "Poacher": ["Attack"],
+            "Pressing Forward": ["Defend", "Support", "Attack"],
+            "Target Forward": ["Support", "Attack"]
+        };
+
+        const playerInstructions = {
+            "Goalkeeper": ["Take Short Kicks", "Take Long Kicks", "Throw It Long", "Distribute Quickly", "Slow Pace Down"],
+            "Sweeper Keeper": ["Take Short Kicks", "Take Long Kicks", "Throw It Long", "Distribute Quickly", "Slow Pace Down"],
+            "Full Back": ["Get Forward", "Stay Back", "Cross More Often", "Cross Less Often", "Dribble More", "Dribble Less", "Take More Risks", "Take Fewer Risks", "Close Down More", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Wing Back": ["Get Forward", "Stay Back", "Cross More Often", "Cross Less Often", "Dribble More", "Dribble Less", "Take More Risks", "Take Fewer Risks", "Close Down More", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Inverted Wing Back": ["Get Forward", "Stay Back", "Dribble More", "Dribble Less", "Take More Risks", "Take Fewer Risks", "Close Down More", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Complete Wing Back": ["Get Forward", "Cross More Often", "Cross Less Often", "Dribble More", "Dribble Less", "Take More Risks", "Take Fewer Risks", "Close Down More", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "No-Nonsense Full Back": ["Stay Back", "Cross Less Often", "Dribble Less", "Take Fewer Risks", "Close Down More", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Inverted Full Back": ["Stay Back", "Dribble Less", "Take Fewer Risks", "Close Down More", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Centre Back": ["Hold Position", "Dribble Less", "Take Fewer Risks", "Close Down Less", "Tackle Harder", "Ease Off Tackles", "Step Up More"],
+            "Ball Playing Defender": ["Hold Position", "Dribble Less", "Take More Risks", "Close Down Less", "Tackle Harder", "Ease Off Tackles", "Step Up More"],
+            "No-Nonsense Centre Back": ["Hold Position", "Dribble Less", "Take Fewer Risks", "Close Down Less", "Tackle Harder", "Ease Off Tackles", "Step Up More"],
+            "Wide Centre Back": ["Get Forward", "Stay Back", "Dribble Less", "Take Fewer Risks", "Close Down More", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Libero": ["Get Forward", "Dribble More", "Take More Risks", "Close Down More", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Defensive Midfielder": ["Hold Position", "Roam From Position", "Dribble Less", "Take Fewer Risks", "Close Down More", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Deep Lying Playmaker": ["Hold Position", "Roam From Position", "Dribble Less", "Take More Risks", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Half Back": ["Hold Position", "Dribble Less", "Take Fewer Risks", "Close Down More", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Anchor": ["Hold Position", "Dribble Less", "Take Fewer Risks", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Segundo Volante": ["Get Forward", "Dribble More", "Take More Risks", "Close Down More", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Roaming Playmaker": ["Roam From Position", "Dribble More", "Take More Risks", "Close Down More", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Regista": ["Roam From Position", "Dribble More", "Take More Risks", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Winger": ["Get Forward", "Cut Inside With Ball", "Sit Narrower", "Run Wide With Ball", "Cross More Often", "Cross Less Often", "Dribble More", "Dribble Less", "Take More Risks", "Take Fewer Risks", "Close Down More", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Wide Midfielder": ["Get Forward", "Stay Back", "Cross More Often", "Cross Less Often", "Dribble More", "Dribble Less", "Take More Risks", "Take Fewer Risks", "Close Down More", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Defensive Winger": ["Get Forward", "Stay Back", "Cross More Often", "Cross Less Often", "Dribble More", "Dribble Less", "Take Fewer Risks", "Close Down More", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Wide Playmaker": ["Get Forward", "Cut Inside With Ball", "Sit Narrower", "Dribble More", "Take More Risks", "Close Down More", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Central Midfielder": ["Get Forward", "Hold Position", "Roam From Position", "Dribble More", "Dribble Less", "Take More Risks", "Take Fewer Risks", "Close Down More", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Box to Box Midfielder": ["Get Forward", "Roam From Position", "Dribble More", "Take More Risks", "Close Down More", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Advanced Playmaker": ["Roam From Position", "Dribble More", "Take More Risks", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Mezzala": ["Get Forward", "Roam From Position", "Dribble More", "Take More Risks", "Close Down More", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Carrilero": ["Hold Position", "Dribble Less", "Take Fewer Risks", "Close Down More", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Inside Forward": ["Get Forward", "Cut Inside With Ball", "Sit Narrower", "Dribble More", "Take More Risks", "Shoot More Often", "Shoot Less Often", "Close Down More", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Inverted Winger": ["Get Forward", "Cut Inside With Ball", "Sit Narrower", "Dribble More", "Take More Risks", "Shoot More Often", "Shoot Less Often", "Close Down More", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Trequartista": ["Get Forward", "Roam From Position", "Dribble More", "Take More Risks", "Shoot More Often", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Raumdeuter": ["Get Forward", "Move Into Channels", "Shoot More Often", "Close Down More", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Attacking Midfielder": ["Get Forward", "Roam From Position", "Dribble More", "Take More Risks", "Shoot More Often", "Shoot Less Often", "Close Down More", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Enganche": ["Hold Position", "Dribble Less", "Take More Risks", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Shadow Striker": ["Get Forward", "Move Into Channels", "Dribble More", "Shoot More Often", "Close Down More", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Advanced Forward": ["Get Forward", "Move Into Channels", "Dribble More", "Shoot More Often", "Close Down More", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Complete Forward": ["Get Forward", "Move Into Channels", "Dribble More", "Shoot More Often", "Close Down More", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Deep Lying Forward": ["Hold Position", "Dribble Less", "Take More Risks", "Shoot Less Often", "Close Down More", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "False Nine": ["Hold Position", "Roam From Position", "Dribble More", "Take More Risks", "Shoot Less Often", "Close Down More", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Poacher": ["Get Forward", "Move Into Channels", "Shoot More Often", "Close Down Less", "Tackle Harder", "Ease Off Tackles"],
+            "Pressing Forward": ["Get Forward", "Move Into Channels", "Dribble More", "Shoot More Often", "Close Down More", "Tackle Harder", "Ease Off Tackles"],
+            "Target Forward": ["Hold Position", "Dribble Less", "Shoot More Often", "Close Down More", "Close Down Less", "Tackle Harder", "Ease Off Tackles"]
+        };
+
+        const positionCoordinates = {
+            "GK": { x: 50, y: 95 },
+            "DL": { x: 10, y: 80 }, "DR": { x: 90, y: 80 },
+            "DCL": { x: 30, y: 85 }, "DCR": { x: 70, y: 85 }, "DC": { x: 50, y: 85 },
+            "WBL": { x: 10, y: 65 }, "WBR": { x: 90, y: 65 },
+            "DMC": { x: 50, y: 55 }, "DMCL": { x: 30, y: 55 }, "DMCR": { x: 70, y: 55 },
+            "ML": { x: 10, y: 45 }, "MR": { x: 90, y: 45 },
+            "MCL": { x: 30, y: 45 }, "MC": { x: 50, y: 45 }, "MCR": { x: 70, y: 45 },
+            "AML": { x: 10, y: 25 }, "AMR": { x: 90, y: 25 },
+            "AMLC": { x: 30, y: 25 }, "AMC": { x: 50, y: 25 }, "AMCR": { x: 70, y: 25 },
+            "STL": { x: 30, y: 10 }, "ST": { x: 50, y: 10 }, "STR": { x: 70, y: 10 }
+        };
+
+        const connections = {
+            strong: [
+                { roles: ["Wing Back", "Complete Wing Back"], pairedWith: ["Inside Forward", "Inverted Winger"], score: 2, pos: ["WBL-AML", "WBR-AMR", "DL-ML", "DR-MR"] },
+                { roles: ["Deep Lying Playmaker", "Regista"], pairedWith: ["Inside Forward", "Advanced Forward"], score: 2, pos: ["DMC-ST", "DMCL-AML", "DMCR-AMR", "DMC-AMC"] },
+                { roles: ["Anchor", "Half Back"], pairedWith: ["Advanced Playmaker", "Mezzala"], score: 2, pos: ["DMC-MC", "DMCL-MCL", "DMCR-MCR"] },
+                { roles: ["Full Back", "No-Nonsense Full Back"], pairedWith: ["Winger", "Wide Midfielder"], score: 2, pos: ["DL-ML", "DR-MR"] },
+                { roles: ["Ball Playing Defender"], pairedWith: ["Deep Lying Playmaker"], score: 2, pos: ["DCL-DMC", "DCR-DMC", "DC-DMC"] },
+                { roles: ["Target Forward"], pairedWith: ["Winger", "Inside Forward"], score: 2, pos: ["ST-AML", "ST-AMR", "STL-AML", "STR-AML", "STL-AMR", "STR-AMR"] }
+            ],
+            conflicts: [
+                { roles: ["Trequartista", "Shadow Striker"], pairedWith: ["Trequartista", "Shadow Striker"], score: -2, pos: ["AMC-ST", "AMC-STL", "AMC-STR"] },
+                { roles: ["Regista", "Enganche"], pairedWith: ["Regista", "Enganche"], score: -2, pos: ["DMC-AMC", "DMCL-AMC", "DMCR-AMC"] },
+                { roles: ["Poacher", "False Nine"], pairedWith: ["Poacher", "False Nine"], score: -2, pos: ["STL-STR", "STL-ST", "STR-ST"] },
+                { roles: ["Inverted Wing Back"], pairedWith: ["None"], score: -1, pos: ["WBL-ML", "WBR-MR"] },
+                { roles: ["Winger", "Inside Forward"], pairedWith: ["Winger", "Inside Forward"], score: -1, pos: ["AML-AMR"] }
+            ]
+        };
+
+        function calculateConnectionScore(pos1, role1, duty1, pos2, role2, duty2, instructions1, instructions2) {
+            let score = 0;
+
+            const adjacentPairs = [
+                ["GK", "DCL"], ["GK", "DC"], ["GK", "DCR"],
+                ["DL", "DCL"], ["DR", "DCR"], ["DCL", "DC"], ["DC", "DCR"],
+                ["WBL", "DCL"], ["WBR", "DCR"], ["WBL", "ML"], ["WBR", "MR"],
+                ["DL", "ML"], ["DR", "MR"], ["ML", "AML"], ["MR", "AMR"],
+                ["DMCL", "DCL"], ["DMCR", "DCR"], ["DMC", "MC"], ["DMCL", "MCL"], ["DMCR", "MCR"],
+                ["MCL", "MC"], ["MC", "MCR"], ["MCL", "AML"], ["MCR", "AMR"],
+                ["AMLC", "AML"], ["AMCR", "AMR"], ["AMC", "ST"], ["AMLC", "AMC"], ["AMCR", "AMC"],
+                ["STL", "ST"], ["ST", "STR"], ["STL", "AML"], ["STR", "AMR"]
+            ];
+            if (adjacentPairs.some(pair => (pair[0] === pos1 && pair[1] === pos2) || (pair[0] === pos2 && pair[1] === pos1))) {
+                score += 1;
+            } else if (pos1 === pos2 || Math.abs(positionCoordinates[pos1].y - positionCoordinates[pos2].y) > 30) {
+                score -= 1;
+            }
+
+            connections.strong.forEach(rule => {
+                if (rule.roles.includes(role1) && rule.pairedWith.includes(role2) && rule.pos.includes(`${pos1}-${pos2}`)) {
+                    score += rule.score;
+                }
+            });
+            connections.conflicts.forEach(rule => {
+                if (rule.roles.includes(role1) && (rule.pairedWith.includes(role2) || rule.pairedWith[0] === "None") && rule.pos.includes(`${pos1}-${pos2}`)) {
+                    score += rule.score;
+                }
+            });
+
+            if ((duty1 === "Support" && duty2 === "Attack") || (duty1 === "Attack" && duty2 === "Support") || (duty1 === "Defend" && duty2 === "Support")) {
+                score += 1;
+            } else if (duty1 === duty2 && (duty1 === "Attack" || duty1 === "Defend")) {
+                score -= 1;
+            }
+
+            if (instructions1.includes("Get Forward") && instructions2.includes("Hold Position")) score += 0.5;
+            if (instructions1.includes("Take More Risks") && instructions2.includes("Take Fewer Risks")) score -= 0.5;
+            if (instructions1.includes("Cross More Often") && instructions2.includes("Sit Narrower")) score += 0.5;
+
+            return score;
+        }
+
+        function toggleAccordion(id) {
+            const content = document.getElementById(id);
+            content.classList.toggle('open');
+        }
+
+        function updateRoles() {
+            const formation = document.getElementById("formation").value;
+            const rolesDiv = document.getElementById("roles");
+            const pitchDiv = document.getElementById("pitch");
+            const svg = pitchDiv.querySelector('svg');
+            rolesDiv.innerHTML = "";
+            pitchDiv.querySelectorAll('.player').forEach(player => player.remove());
+            svg.querySelectorAll('.connection-line').forEach(line => line.remove());
+
+            const positions = formations[formation];
+            positions.forEach(position => {
+                const div = document.createElement("div");
+                div.className = "position fade-in";
+                div.innerHTML = `
+                    <label class="block text-sm font-medium text-gray-700">${position}</label>
+                    <select id="${position}-role" onchange="updateDutiesAndInstructions('${position}'); updateConnections()" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-gray-50">
+                        ${roles[position].map(role => `<option value="${role}">${role}</option>`).join("")}
+                    </select>
+                    <select id="${position}-duty" onchange="updateConnections()" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-gray-50">
+                        ${duties[roles[position][0]].map(duty => `<option value="${duty}">${duty}</option>`).join("")}
+                    </select>
+                    <div id="${position}-instructions" class="mt-2 grid grid-cols-2 gap-2">
+                        ${playerInstructions[roles[position][0]].map(instruction => `<label><input type="checkbox" name="${position}-instruction" value="${instruction}" onchange="updateConnections()"> ${instruction}</label>`).join("")}
+                    </div>
+                `;
+                rolesDiv.appendChild(div);
+
+                const player = document.createElement("div");
+                player.className = "player";
+                player.style.left = `${positionCoordinates[position].x}%`;
+                player.style.top = `${positionCoordinates[position].y}%`;
+                player.innerText = position;
+                player.title = position;
+                pitchDiv.appendChild(player);
+            });
+
+            updateConnections();
+        }
+
+        function updateDutiesAndInstructions(position) {
+            const role = document.getElementById(`${position}-role`).value;
+            const dutySelect = document.getElementById(`${position}-duty`);
+            const instructionsDiv = document.getElementById(`${position}-instructions`);
+            dutySelect.innerHTML = duties[role].map(duty => `<option value="${duty}">${duty}</option>`).join("");
+            instructionsDiv.innerHTML = playerInstructions[role].map(instruction => `<label><input type="checkbox" name="${position}-instruction" value="${instruction}" onchange="updateConnections()"> ${instruction}</label>`).join("");
+            updateConnections();
+        }
+
+        function updateConnections() {
+            const formation = document.getElementById("formation").value;
+            const positions = formations[formation];
+            const svg = document.getElementById("pitch").querySelector('svg');
+            svg.querySelectorAll('.connection-line').forEach(line => line.remove());
+
+            const pitchWidth = 200;
+            const pitchHeight = 300;
+
+            for (let i = 0; i < positions.length; i++) {
+                for (let j = i + 1; j < positions.length; j++) {
+                    const pos1 = positions[i];
+                    const pos2 = positions[j];
+                    const role1 = document.getElementById(`${pos1}-role`).value;
+                    const duty1 = document.getElementById(`${pos1}-duty`).value;
+                    const role2 = document.getElementById(`${pos2}-role`).value;
+                    const duty2 = document.getElementById(`${pos2}-duty`).value;
+                    const instructions1 = Array.from(document.querySelectorAll(`input[name="${pos1}-instruction"]:checked`)).map(input => input.value);
+                    const instructions2 = Array.from(document.querySelectorAll(`input[name="${pos2}-instruction"]:checked`)).map(input => input.value);
+
+                    const score = calculateConnectionScore(pos1, role1, duty1, pos2, role2, duty2, instructions1, instructions2);
+                    let color;
+                    if (score >= 2) color = "green";
+                    else if (score >= 0) color = "orange";
+                    else color = "red";
+
+                    const x1 = (positionCoordinates[pos1].x / 100) * pitchWidth;
+                    const y1 = (positionCoordinates[pos1].y / 100) * pitchHeight;
+                    const x2 = (positionCoordinates[pos2].x / 100) * pitchWidth;
+                    const y2 = (positionCoordinates[pos2].y / 100) * pitchHeight;
+
+                    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    line.setAttribute("x1", x1);
+                    line.setAttribute("y1", y1);
+                    line.setAttribute("x2", x2);
+                    line.setAttribute("y2", y2);
+                    line.setAttribute("stroke", color);
+                    line.setAttribute("class", "connection-line");
+                    svg.appendChild(line);
+                }
+            }
+        }
+
+        function rateTactic() {
+            const formation = document.getElementById("formation").value;
+            const mentality = document.getElementById("mentality").value;
+            const positions = formations[formation];
+            let balanceScore = 0;
+            let attackScore = 0;
+            let defenseScore = 0;
+            let creativityScore = 0;
+            let supportCount = 0;
+            let attackCount = 0;
+            let defendCount = 0;
+            let creativeCount = 0;
+            let conflicts = 0;
+
+            const defensiveRoles = [
+                "Centre Back", "No-Nonsense Centre Back", "Defensive Midfielder",
+                "Full Back", "No-Nonsense Full Back", "Anchor", "Half Back",
+                "Inverted Full Back", "Wide Centre Back"
+            ];
+            const attackingRoles = [
+                "Advanced Forward", "Poacher", "Inside Forward", "Winger",
+                "Attacking Midfielder", "Shadow Striker", "Raumdeuter",
+                "Trequartista"
+            ];
+            const creativeRoles = [
+                "Deep Lying Playmaker", "Advanced Playmaker", "Enganche",
+                "Trequartista", "Wide Playmaker", "Roaming Playmaker", "Regista"
+            ];
+
+            const mentalityModifiers = {
+                "Very Defensive": { attack: 0.5, defense: 1.5, balance: 1.2 },
+                "Defensive": { attack: 0.7, defense: 1.3, balance: 1.1 },
+                "Cautious": { attack: 0.9, defense: 1.1, balance: 1.0 },
+                "Balanced": { attack: 1.0, defense: 1.0, balance: 1.0 },
+                "Positive": { attack: 1.1, defense: 0.9, balance: 0.9 },
+                "Attacking": { attack: 1.3, defense: 0.7, balance: 0.8 },
+                "Very Attacking": { attack: 1.5, defense: 0.5, balance: 0.7 }
+            };
+
+            const teamInstructions = {};
+            document.querySelectorAll('#team-instructions input[type="checkbox"]').forEach(checkbox => {
+                teamInstructions[checkbox.id] = checkbox.checked;
+            });
+
+            positions.forEach(position => {
+                const role = document.getElementById(`${position}-role`).value;
+                const duty = document.getElementById(`${position}-duty`).value;
+                const instructions = Array.from(document.querySelectorAll(`input[name="${position}-instruction"]:checked`)).map(input => input.value);
+
+                if (duty === "Support") supportCount++;
+                if (duty === "Attack") attackCount++;
+                if (duty === "Defend" || duty === "Stopper" || duty === "Cover") defendCount++;
+
+                if (attackingRoles.includes(role)) {
+                    attackScore += duty === "Attack" ? 2 : 1;
+                }
+                if (defensiveRoles.includes(role)) {
+                    defenseScore += duty === "Defend" || duty === "Stopper" || duty === "Cover" ? 2 : 1;
+                }
+                if (creativeRoles.includes(role)) {
+                    creativeCount += duty === "Support" || duty === "Attack" ? 1 : 0.5;
+                }
+
+                instructions.forEach(instruction => {
+                    if (["Dribble More", "Get Forward", "Shoot More Often", "Take More Risks", "Move Into Channels"].includes(instruction)) {
+                        attackScore += 0.5;
+                        if (duty === "Defend") conflicts += 0.5;
+                    }
+                    if (["Hold Position", "Dribble Less", "Take Fewer Risks", "Close Down Less"].includes(instruction)) {
+                        defenseScore += 0.5;
+                        if (duty === "Attack") conflicts += 0.5;
+                    }
+                    if (["Take More Risks", "Roam From Position"].includes(instruction)) {
+                        creativeCount += 0.3;
+                    }
+                    if (["Cross More Often", "Run Wide With Ball"].includes(instruction) && teamInstructions["Narrow"]) {
+                        conflicts += 0.5;
+                    }
+                });
+            });
+
+            // Team instructions impact
+            if (teamInstructions["Counter"]) attackScore += 2;
+            if (teamInstructions["Counter-Press"]) defenseScore += 2;
+            if (teamInstructions["Be More Expressive"]) {
+                creativeCount += 1;
+                balanceScore -= 1;
+            }
+            if (teamInstructions["Be More Disciplined"]) balanceScore += 2;
+            if (teamInstructions["Pass Into Space"]) attackScore += 1;
+            if (teamInstructions["Play Out of Defence"]) defenseScore += 1;
+            if (teamInstructions["High Press"] || teamInstructions["Much More Often"]) defenseScore += 1;
+            if (teamInstructions["Low Press"] || teamInstructions["Much Less Often"]) defenseScore += 1;
+            if (teamInstructions["Use Offside Trap"]) defenseScore += 1;
+            if (teamInstructions["Get Stuck In"]) defenseScore += 1;
+            if (teamInstructions["Overlap Left"] || teamInstructions["Overlap Right"]) attackScore += 1;
+            if (teamInstructions["Work Ball Into Box"]) {
+                balanceScore += 1;
+                attackScore -= 0.5;
+            }
+            if (teamInstructions["Run at Defence"]) {
+                attackScore += 1;
+                creativityScore += 0.5;
+                balanceScore -= 0.5;
+            }
+            if (teamInstructions["Prevent Short GK Distribution"]) {
+                defenseScore += 1;
+                attackScore += 0.5;
+            }
+
+            // Conflicts
+            if (teamInstructions["Narrow"] && (teamInstructions["Focus Play Down Left"] || teamInstructions["Focus Play Down Right"])) conflicts += 1;
+            if (teamInstructions["Much More Often"] && teamInstructions["Low Press"]) conflicts += 1;
+            if (teamInstructions["Work Ball Into Box"] && teamInstructions["Run at Defence"]) conflicts += 1;
+            if (teamInstructions["Prevent Short GK Distribution"] && (teamInstructions["Low Press"] || teamInstructions["Much Less Often"])) conflicts += 1;
+
+            attackScore *= mentalityModifiers[mentality].attack;
+            defenseScore *= mentalityModifiers[mentality].defense;
+            balanceScore *= mentalityModifiers[mentality].balance;
+
+            balanceScore += Math.min(supportCount, attackCount, defendCount) * 8;
+            balanceScore = Math.min(balanceScore, 30);
+
+            attackScore = Math.min(attackScore * 4, 35);
+            defenseScore = Math.min(defenseScore * 4, 35);
+            creativityScore = Math.min(creativeCount * 5, 30);
+            balanceScore = Math.max(balanceScore - conflicts, 0);
+            const totalScore = Math.round(balanceScore + attackScore + defenseScore + creativityScore);
+
+            document.getElementById("result").innerHTML = `
+                <h3 class="text-xl font-semibold text-gray-800 mb-2">Tactic Rating: ${totalScore}/100</h3>
+                <p class="text-gray-600">Balance: ${Math.round(balanceScore)}/30 - ${balanceScore >= 20 ? '<span class="text-green-600">Good</span>' : '<span class="text-red-600">Needs work</span>'}</p>
+                <p class="text-gray-600">Attack: ${Math.round(attackScore)}/35 - ${attackScore >= 25 ? '<span class="text-green-600">Strong</span>' : '<span class="text-red-600">Improve attacking roles</span>'}</p>
+                <p class="text-gray-600">Defense: ${Math.round(defenseScore)}/35 - ${defenseScore >= 25 ? '<span class="text-green-600">Solid</span>' : '<span class="text-red-600">Strengthen defense</span>'}</p>
+                <p class="text-gray-600">Creativity: ${Math.round(creativityScore)}/30 - ${creativityScore >= 20 ? '<span class="text-green-600">Creative</span>' : '<span class="text-red-600">Add playmakers</span>'}</p>
+                ${conflicts > 0 ? '<p class="text-yellow-600">Warning: Conflicting instructions detected, reducing balance score.</p>' : ''}
+            `;
+        }
+
+        // Initialize roles on page load
+        updateRoles();
+    </script>
+</body>
+</html>
